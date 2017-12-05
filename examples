@@ -1,0 +1,73 @@
+
+Data(X) < Nil : () | Cons : (Nat,X) >
+Data(X) < Head : () | Tail : () >
+Data(X) < Head : () >
+Data(X) < >
+
+Record(X) {}
+Record(X) { .head : (Nat,Nat) | .tail : X }
+
+Rules ( id : Nat -> Nat ) = {
+	- x = x
+}
+
+
+Rules ( sum : Data(X) < Zero : () | Succ : X > -> Data(X) < Zero : () | Succ : X > -> Data(X) < Zero : () | Succ : X > ) = {
+        - x Zero ()   = x
+	- x Succ y    = Succ (main x y)
+}
+
+Rules ( id : () -> () ) = {
+	- x = x
+}
+
+Rules ( unit : () ) = {
+        - = ()   
+}
+
+Rules ( main : () ) = {
+        - = id unit
+}
+
+Rules ( main : Data(X) < Zero : () | Succ : X > ) = {
+        - = sum (Succ (Succ (Zero ()))) (Succ (Zero ()))
+}
+
+
+Rules ( infinite : Record(X) { .head : () | .tail : X } ) = {
+        - .head    = ()
+	- .tail    = infinite
+}
+
+Rules ( exp2 : () ) = {
+        - = infinite .tail .tail .head
+}
+
+
+Rules ( infiniteLoop : () ) = {
+        - = infiniteLoop
+}
+
+Rules ( zip : (Data(Y) < Zero : () | Succ : Y > -> 
+               Data(Y) < Zero : () | Succ : Y > -> Data(Y) < Zero : () | Succ : Y >) -> 
+                      Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X }     -> 
+                      Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X }     -> 
+                      Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X }         ) = {
+        - f x y .head = f (x .head) (y .head)
+        - f x y .tail = zip f (x .tail) (y .tail)
+}
+
+
+Rules ( a : Data(X) < C : X > ) = {
+        - = b
+}
+
+Rules ( b : Data(Y) < C : Y > ) = {
+        - = b
+}
+
+Rules ( main : (() -> ()) -> () ) = {
+        - x = x ()
+}
+
+-- Succ Zero ()

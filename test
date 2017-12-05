@@ -1,0 +1,26 @@
+
+
+Rules ( main : Data(Y) < Zero : () | Succ : Y > ) = {
+        -  = fib .tail .tail .tail .tail .tail .tail  .head
+}
+
+Rules ( zip : (Data(Y) < Zero : () | Succ : Y > -> 
+               Data(Y) < Zero : () | Succ : Y > -> Data(Y) < Zero : () | Succ : Y >) -> 
+                      Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X }     -> 
+                      Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X }     -> 
+                      Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X }         ) = {
+        - f x y .head = f (x .head) (y .head)
+        - f x y .tail = zip f (x .tail) (y .tail)
+}
+
+Rules ( sum : Data(X) < Zero : () | Succ : X > -> Data(X) < Zero : () | Succ : X > -> Data(X) < Zero : () | Succ : X > ) = {
+        - x Zero ()   = x
+	- x Succ y    = Succ (sum x y)
+}
+
+Rules ( fib : Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X } ) = {
+	- .head       = Zero ()
+        - .tail .head = Succ (Zero ())
+        - .tail .tail = zip sum fib (fib .tail)
+}
+

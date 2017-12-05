@@ -1,0 +1,4 @@
+Rules ( main : Data(X) < Zero : () | Succ : X > -> Data(X) < Zero : () | Succ : X > ) = {
+        - Zero () = Zero ()
+	- Succ x  = x
+}
