@@ -70,4 +70,8 @@ Rules ( main : (() -> ()) -> () ) = {
         - x = x ()
 }
 
+Rules ( main : Data(Y) < Zero : () | Succ : Y > ) = {
+        -  = fib .tail .tail .tail .tail .tail .tail  
+}
+
 -- Succ Zero ()

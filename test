@@ -1,7 +1,7 @@
 
 
 Rules ( main : Data(Y) < Zero : () | Succ : Y > ) = {
-        -  = fib .tail .tail .tail .tail .tail .tail  .head
+        -  = fib .tail .tail .tail .tail .tail .tail  
 }
 
 Rules ( zip : (Data(Y) < Zero : () | Succ : Y > -> 

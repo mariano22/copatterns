@@ -1,3 +1,4 @@
+-- Comentarios Haddock
 module Typing (
        isLinear,
        isProgramTyped,
@@ -12,7 +13,7 @@ import Data.Maybe
 import Control.Applicative
 import Common
 
-
+-- Comentarios
 isLinear :: Copattern -> Bool
 isLinear =  allUnique . fvc
            where fvc (CApp c p) = fvc c ++ fvp p
