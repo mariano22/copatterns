@@ -3,6 +3,7 @@ module Parse where
 import Common
 import Data.Maybe
 import Data.Char
+import qualified Data.Map as M
 
 }
 
@@ -34,10 +35,10 @@ import Data.Char
     IDENTIFIER       { TIdentifier $$    }
     UPPERCASEIDENTIFIER       { TUppercaseIdentifier $$    }
     DESTRUCTORIDENTIFIER       { TDestructor $$    }
-    RULES     { TRules     }
     RECORD     { TRecord     }
     DATA     { TData     }
     UNIT { TUnit }
+    ENDLINEBLOCK { TEndlineBlock }
 
     
 %right IDENTIFIER
@@ -49,29 +50,31 @@ import Data.Char
 
 Defs    :: { [Def] }
          :  Def Defs           { $1 : $2 }
+         |  ENDLINEBLOCK Defs { $2 }
          | {[]} 
 
 Def     :: { Def }            
-         :  RULES '(' IDENTIFIER ':' Type ')' '=' '{' Rules '}' { ($3, ($5, $9)) }
+         :  IDENTIFIER ':' Type Rules { RuleDef $1 $3 $4 }
+         |  UPPERCASEIDENTIFIER '=' Type { TypeDef $1 $3 }
 
-Type    :: { Type }
-        : UPPERCASEIDENTIFIER { TyVar $1 }
-        | UNIT                      { TyUnit }
-        | '(' Type ',' Type ')'                 { TyTuple $2 $4 }
-        | DATA '(' UPPERCASEIDENTIFIER ')' '<' DataTypeList '>' { TyData $3 $6 }
-        | Type '->' Type               { TyFun $1 $3 }
-        | RECORD '(' UPPERCASEIDENTIFIER ')' '{' RecordTypeList '}' { TyRecord $3 $6 }
+Type    :: { VType }
+        : UPPERCASEIDENTIFIER { VTyVar $1 }
+        | UNIT                      { VTyUnit }
+        | '(' Type ',' Type ')'                 { VTyTuple $2 $4 }
+        | DATA '(' UPPERCASEIDENTIFIER ')' '<' DataTypeList '>' { VTyData $3 $6 }
+        | Type '->' Type               { VTyFun $1 $3 }
+        | RECORD '(' UPPERCASEIDENTIFIER ')' '{' RecordTypeList '}' { VTyRecord $3 $6 }
         | '(' Type ')'                 { $2 }
 
-DataTypeList :: { LabeledTypes }
-             : UPPERCASEIDENTIFIER ':' Type '|' DataTypeList  { ($1,$3) : $5 }
-             | UPPERCASEIDENTIFIER ':' Type { [($1,$3)] }
-             | {[]}
+DataTypeList :: { LabeledVTypes }
+             : UPPERCASEIDENTIFIER ':' Type '|' DataTypeList  { M.insert $1 $3 $5 }
+             | UPPERCASEIDENTIFIER ':' Type { M.singleton $1 $3 }
+             | { M.empty }
 
-RecordTypeList :: { LabeledTypes }
-               : DESTRUCTORIDENTIFIER ':' Type '|' RecordTypeList  { ($1,$3) : $5 }
-               | DESTRUCTORIDENTIFIER ':' Type { [($1,$3)] }
-               | {[]}
+RecordTypeList :: { LabeledVTypes }
+               : DESTRUCTORIDENTIFIER ':' Type '|' RecordTypeList  { M.insert $1 $3 $5 }
+               | DESTRUCTORIDENTIFIER ':' Type { M.singleton $1 $3 }
+               | { M.empty }
 
 Rules :: { [Rule] }
       : Rule Rules { $1 : $2 }
@@ -148,20 +151,18 @@ data Token =   TEquals
              | TIdentifier String
              | TUppercaseIdentifier String
              | TDestructor String
-             | TRules
              | TRecord
              | TData
-             | TNatType
-             | TNatural Integer
              | TUnit
              | TEOF
+             | TEndlineBlock
              deriving Show
 
 
 ----------------------------------
 lexer cont s = case s of
                     [] -> cont TEOF []
-                    ('\n':s)  ->  \line -> lexer cont s (line + 1)
+                    ('\n':cs) ->   \line -> dropSpaces 1 cs
                     (c:cs)
                           | isSpace c -> lexer cont cs
                           | isAlpha c -> lexIdentifiers (c:cs)
@@ -187,7 +188,6 @@ lexer cont s = case s of
 
                     unknown -> \line -> Failed $ "Línea "++(show line)++": No se puede reconocer "++(show $ take 10 unknown)++ "..."
                     where lexIdentifiers cs = case span (\x-> isAlpha x || x=='_' || isDigit x) cs of
-                              	          	    ("Rules",rest)   -> cont TRules rest
                                                     ("Data",rest) -> cont TData rest
                                                     ("Record",rest) -> cont TRecord rest
                                                     (var,rest)   -> cont ((if isUpper (head cs) then TUppercaseIdentifier else TIdentifier) var) rest
@@ -199,6 +199,9 @@ lexer cont s = case s of
 		                                                                     _ -> consumirBK (anidado-1) cl cont cs
 	                                                      ('\n':cs) -> consumirBK anidado (cl+1) cont cs
 	                                                      (_:cs) -> consumirBK anidado cl cont cs
+                          dropSpaces x ('\n':cs) = dropSpaces (x+1) cs
+                          dropSpaces 1 s = \line -> lexer cont s (line+1)
+                          dropSpaces x s = \line -> cont TEndlineBlock s (line+x)
 
     
 type_parse s = parseType s 1

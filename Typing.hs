@@ -12,6 +12,7 @@ import Data.List
 import Data.Maybe
 import Control.Applicative
 import Common
+import qualified Data.Map as M
 
 -- Comentarios
 isLinear :: Copattern -> Bool
@@ -30,11 +31,13 @@ signature = map ( \t -> (fst t,fst (snd t)) )
 rules :: Program -> NameEnv [Rule]
 rules = map ( \t -> (fst t,snd (snd t)) )
 
-
 isProgramTyped :: Program -> Bool
 isProgramTyped defs = (isJust . lookup "main") defs && 
                       all (\(f,(ty,rs)) -> all (\(q,u) -> isRuleTyped sig f ty q u ) rs ) defs
                       where sig = signature defs
+
+
+
 
 isRuleTyped :: NameEnv Type -> Symbol -> Type -> Copattern -> Term -> Bool
 isRuleTyped sig f ty q u = maybe False ( \(context, inferedType) -> typeCheckTerm (context++sig) u inferedType ) (typeCopattern ty q)
@@ -49,7 +52,7 @@ typeCopattern typeA (CApp q p) = do (context1,typeFun) <- typeCopattern typeA q
                                     return (context1 ++ context2, typeC)
 typeCopattern typeA (CDestructor d q) = do (context, typeRecord) <- typeCopattern typeA q
                                            typeField <- case typeRecord of
-                                                             t@(TyRecord x rec) ->  lookup d rec >>= (return . typeSubstitution x t)
+                                                             t@(TyRecord rec) ->  M.lookup d rec >>= (return . typeSubstitution t 0)
                                                              _ -> Nothing
                                            return (context,typeField)
 
@@ -59,20 +62,20 @@ typePattern TyUnit PUnit = return []
 typePattern (TyTuple type1 type2) (PTuple p1 p2) = do context1 <- typePattern type1 p1
                                                       context2 <- typePattern type2 p2
                                                       return (context1++context2)
-typePattern t@(TyData x typecons) (PConstructor c p) = do typeField <- ( lookup c typecons >>= (return . typeSubstitution x t) )
-                                                          typePattern typeField p
+typePattern t@(TyData typecons) (PConstructor c p) = do typeField <- ( M.lookup c typecons >>= (return . typeSubstitution t 0) )
+                                                        typePattern typeField p
 typePattern _ _ = Nothing                               
                                         
 
 
-typeSubstitution :: TypeVar -> Type -> Type -> Type
-typeSubstitution x t = f
-                 where f (TyVar y) = if x==y then t else TyVar y
-                       f TyUnit = TyUnit
-                       f (TyTuple t1 t2) = TyTuple (f t1) (f t2)
-                       f (TyData y dDef) = TyData y ( if x==y then dDef else map (\(l,ty)->(l,f ty)) dDef )
-                       f (TyFun t1 t2) = TyFun (f t1) (f t2)
-                       f (TyRecord y rDef) = TyRecord y ( if x==y then rDef else map (\(l,ty)->(l,f ty)) rDef )
+typeSubstitution :: Type -> Int -> Type -> Type
+typeSubstitution t   = f
+                 where f x (Bound y) = if x==y then t else Bound y
+                       f x TyUnit = TyUnit
+                       f x (TyTuple t1 t2) = TyTuple (f x t1) (f x t2)
+                       f x (TyData dDef) = TyData $ M.map (f (x+1)) dDef 
+                       f x (TyFun t1 t2) = TyFun (f x t1) (f x t2)
+                       f x (TyRecord rDef) = TyRecord $ M.map (f (x+1)) rDef 
                                     
 
 typeTerm :: NameEnv Type -> Term -> Maybe Type
@@ -85,22 +88,25 @@ typeTerm c = tyT
                              if typeCheckTerm c t2 tyA1 then return tyA2 else Nothing
         tyT (Destructor d t) = do tyRecord <- tyT t
                                   case tyRecord of
-                                       tt@(TyRecord x rDef) -> lookup d rDef >>= (return . typeSubstitution x tt)
+                                       tt@(TyRecord rDef) -> M.lookup d rDef >>= (return . typeSubstitution tt 0)
                                        _                    -> Nothing
 
-cmpTy c1 c2 = f 
+cmpTy c1 c2 = (==)
+{--
     where f (TyVar x) (TyVar y) = fromJust(elemIndex x c1) == fromJust(elemIndex y c2)
           f TyUnit TyUnit = True
           f (TyTuple xt1 xt2) (TyTuple yt1 yt2) = f xt1 yt1 && f xt2 yt2
           f (TyFun xt1 xt2) (TyFun yt1 yt2) = f xt1 yt1 && f xt2 yt2
           f (TyData x xT) (TyData y yT) = length xT == length yT && all (\((lx,tx),(ly,ty)) -> lx==ly && cmpTy (x:c1) (y:c2) tx ty) (zip xT yT)
           f (TyRecord x xT) (TyRecord y yT) = length xT == length yT && all (\((lx,tx),(ly,ty)) -> lx==ly && cmpTy (x:c1) (y:c2) tx ty) (zip xT yT)
+          f _ _ = False
+--}
 
 typeCheckTerm :: NameEnv Type -> Term -> Type -> Bool
 typeCheckTerm c = tyC
   where tyC Unit TyUnit = True
         tyC (Tuple t1 t2) (TyTuple ty1 ty2) = (tyC t1 ty1) && (tyC t2 ty2)
-        tyC (Constructor cL t) tt@(TyData x dDef) = maybe False ((tyC t) . (typeSubstitution x tt)) (lookup cL dDef)
+        tyC (Constructor cL t) tt@(TyData dDef) = maybe False ((tyC t) . (typeSubstitution tt 0)) (M.lookup cL dDef)
         tyC t ty = maybe False (cmpTy [] [] ty) (typeTerm c t)
 -- TODO
 

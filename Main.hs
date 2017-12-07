@@ -18,15 +18,19 @@ module Main where
   import Typing
 
   e = do textProgram <- readFile "test"
-         ast <- parseIO "test" defs_parse textProgram
+         defs <- parseIO "test" defs_parse textProgram
+         let Just (tEnv,ast) = typeFold [] [] (fromJust defs)
          (putStrLn . show) ast
-         let typeResult = maybe "Not Parsed" (\ast-> if isProgramTyped ast then 
+         (putStrLn . show) tEnv
+         x (Just ast)
+
+  x ast = do let typeResult = maybe "Not Parsed" (\ast-> if isProgramTyped ast then 
                           "Bien Tipado" else "Mal Tipado :(") ast
-         putStrLn typeResult
-         let programRules =  rules (fromMaybe [] ast)
-         putStrLn $ "Reglas: " ++ show programRules
-         t <- computeAllIO programRules (Var "main")
-         (putStrLn . show) t
+             putStrLn typeResult
+             let programRules =  rules (fromMaybe [] ast)
+             putStrLn $ "Reglas: " ++ show programRules
+             t <- computeAllIO programRules (Var "main")
+             (putStrLn . show) t
 
   parseIO :: String -> (String -> ParseResult a) -> String -> IO (Maybe a)
   parseIO f p x = case p x of

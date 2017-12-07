@@ -1,26 +1,24 @@
 
 
-Rules ( main : Data(Y) < Zero : () | Succ : Y > ) = {
-        -  = fib .tail .tail .tail .tail .tail .tail  
+Nat = Data(Y) < Zero : () | Succ : Y > 
+SNat = Record(X) { .head : Nat | .tail : X }
+
+Rules ( main : Nat ) = {
+        -  = fib .tail .tail .tail .tail .tail .tail .head
 }
 
-Rules ( zip : (Data(Y) < Zero : () | Succ : Y > -> 
-               Data(Y) < Zero : () | Succ : Y > -> Data(Y) < Zero : () | Succ : Y >) -> 
-                      Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X }     -> 
-                      Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X }     -> 
-                      Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X }         ) = {
+Rules ( zip : (Nat -> Nat) -> SNat -> SNat -> SNat ) = {
         - f x y .head = f (x .head) (y .head)
         - f x y .tail = zip f (x .tail) (y .tail)
 }
 
-Rules ( sum : Data(X) < Zero : () | Succ : X > -> Data(X) < Zero : () | Succ : X > -> Data(X) < Zero : () | Succ : X > ) = {
+Rules ( sum : Nat -> Nat -> Nat ) = {
         - x Zero ()   = x
 	- x Succ y    = Succ (sum x y)
 }
 
-Rules ( fib : Record(X) { .head : Data(Y) < Zero : () | Succ : Y > | .tail : X } ) = {
+Rules ( fib : SNat ) = {
 	- .head       = Zero ()
         - .tail .head = Succ (Zero ())
         - .tail .tail = zip sum fib (fib .tail)
 }
-
