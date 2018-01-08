@@ -13,6 +13,7 @@ import Data.Maybe
 import Control.Applicative
 import Common
 import qualified Data.Map as M
+import Control.Monad.Except
 
 -- Comentarios
 isLinear :: Copattern -> Bool
@@ -31,84 +32,86 @@ signature = map ( \t -> (fst t,fst (snd t)) )
 rules :: Program -> NameEnv [Rule]
 rules = map ( \t -> (fst t,snd (snd t)) )
 
-isProgramTyped :: Program -> Bool
-isProgramTyped defs = (isJust . lookup "main") defs && 
-                      all (\(f,(ty,rs)) -> all (\(q,u) -> isRuleTyped sig f ty q u ) rs ) defs
+isProgramTyped :: Program -> WithError ()
+isProgramTyped defs = if (not .isJust . lookup "main") defs then throwError "Undefined symbol main"
+                      else do mapM (\(_,(ty,rs)) -> 
+                               mapM (\(q,u)       -> isRuleTyped sig ty q u) rs ) defs
+                              return ()
                       where sig = signature defs
 
 
 
 
-isRuleTyped :: NameEnv Type -> Symbol -> Type -> Copattern -> Term -> Bool
-isRuleTyped sig f ty q u = maybe False ( \(context, inferedType) -> typeCheckTerm (context++sig) u inferedType ) (typeCopattern ty q)
+isRuleTyped :: NameEnv Type -> Type -> Copattern -> Term -> WithError ()
+isRuleTyped sig ty q u = do (context, inferedType) <- typeCopattern ty q
+                            typeCheckTerm (context++sig) u inferedType
 
-typeCopattern :: Type -> Copattern -> Maybe (NameEnv Type,Type)
+type WithError a = Either String a
+
+typeCopattern :: Type -> Copattern -> WithError (NameEnv Type,Type)
 typeCopattern typeA Hole = return ([],typeA)
 typeCopattern typeA (CApp q p) = do (context1,typeFun) <- typeCopattern typeA q
                                     (typeB,typeC) <- case typeFun of
                                                           TyFun typeB typeC -> return (typeB,typeC)
-                                                          _                 -> Nothing
+                                                          _                 -> throwError "Error no especificado (TODO)"
                                     context2 <- typePattern typeB p
                                     return (context1 ++ context2, typeC)
 typeCopattern typeA (CDestructor d q) = do (context, typeRecord) <- typeCopattern typeA q
                                            typeField <- case typeRecord of
-                                                             t@(TyRecord rec) ->  M.lookup d rec >>= (return . typeSubstitution t 0)
-                                                             _ -> Nothing
+                                                             t@(TyRecord rec) -> maybe (throwError "Error no especificado (TODO)")
+                                                                                 (return . typeSubstitution t 0) (M.lookup d rec) 
+                                                             _ -> throwError "Error no especificado (TODO)"
                                            return (context,typeField)
 
-typePattern :: Type -> Pattern -> Maybe (NameEnv Type)
+typePattern :: Type -> Pattern -> WithError (NameEnv Type)
 typePattern typeA (PVar x) = return [ (x,typeA) ]
 typePattern TyUnit PUnit = return []
 typePattern (TyTuple type1 type2) (PTuple p1 p2) = do context1 <- typePattern type1 p1
                                                       context2 <- typePattern type2 p2
                                                       return (context1++context2)
-typePattern t@(TyData typecons) (PConstructor c p) = do typeField <- ( M.lookup c typecons >>= (return . typeSubstitution t 0) )
+typePattern t@(TyData typecons) (PConstructor c p) = do typeField <-  maybe (throwError "Error no especificado (TODO)")
+                                                                      (return . typeSubstitution t 0) (M.lookup c typecons)
                                                         typePattern typeField p
-typePattern _ _ = Nothing                               
+typePattern _ _ = throwError "Error no especificado (TODO)"                               
                                         
 
 
 typeSubstitution :: Type -> Int -> Type -> Type
-typeSubstitution t   = f
-                 where f x (Bound y) = if x==y then t else Bound y
-                       f x TyUnit = TyUnit
-                       f x (TyTuple t1 t2) = TyTuple (f x t1) (f x t2)
-                       f x (TyData dDef) = TyData $ M.map (f (x+1)) dDef 
-                       f x (TyFun t1 t2) = TyFun (f x t1) (f x t2)
-                       f x (TyRecord rDef) = TyRecord $ M.map (f (x+1)) rDef 
+typeSubstitution t x  = f
+                 where  f (TyVar y) = if x==y then t else TyVar y
+                        f TyUnit = TyUnit
+                        f (TyTuple t1 t2) = TyTuple (f t1) (f t2)
+                        f (TyData dDef) = TyData $ M.map g dDef 
+                        f (TyFun t1 t2) = TyFun (f t1) (f t2)
+                        f (TyRecord rDef) = TyRecord $ M.map g rDef 
+                        g = typeSubstitution t (x+1)
                                     
 
-typeTerm :: NameEnv Type -> Term -> Maybe Type
+typeTerm :: NameEnv Type -> Term -> WithError Type
 typeTerm c = tyT
-  where tyT (Var x) = lookup x c
+  where tyT (Var x) = maybe (throwError "Error no especificado (TODO)") return (lookup x c)
         tyT (App t1 t2) = do tyFun <- tyT t1
                              (tyA1,tyA2) <- case tyFun of
                                                  TyFun tyA1 tyA2 -> return (tyA1,tyA2)
-                                                 _               -> Nothing
-                             if typeCheckTerm c t2 tyA1 then return tyA2 else Nothing
+                                                 _               -> throwError "Error no especificado (TODO)"
+                             typeCheckTerm c t2 tyA1 
+                             return tyA2
         tyT (Destructor d t) = do tyRecord <- tyT t
                                   case tyRecord of
-                                       tt@(TyRecord rDef) -> M.lookup d rDef >>= (return . typeSubstitution tt 0)
-                                       _                    -> Nothing
+                                       tt@(TyRecord rDef) -> maybe (throwError "Error no especificado (TODO)")
+                                                             (return . typeSubstitution tt 0) (M.lookup d rDef) 
+                                       _                    -> throwError "Error no especificado (TODO)"
 
-cmpTy c1 c2 = (==)
-{--
-    where f (TyVar x) (TyVar y) = fromJust(elemIndex x c1) == fromJust(elemIndex y c2)
-          f TyUnit TyUnit = True
-          f (TyTuple xt1 xt2) (TyTuple yt1 yt2) = f xt1 yt1 && f xt2 yt2
-          f (TyFun xt1 xt2) (TyFun yt1 yt2) = f xt1 yt1 && f xt2 yt2
-          f (TyData x xT) (TyData y yT) = length xT == length yT && all (\((lx,tx),(ly,ty)) -> lx==ly && cmpTy (x:c1) (y:c2) tx ty) (zip xT yT)
-          f (TyRecord x xT) (TyRecord y yT) = length xT == length yT && all (\((lx,tx),(ly,ty)) -> lx==ly && cmpTy (x:c1) (y:c2) tx ty) (zip xT yT)
-          f _ _ = False
---}
 
-typeCheckTerm :: NameEnv Type -> Term -> Type -> Bool
+typeCheckTerm :: NameEnv Type -> Term -> Type -> WithError ()
 typeCheckTerm c = tyC
-  where tyC Unit TyUnit = True
-        tyC (Tuple t1 t2) (TyTuple ty1 ty2) = (tyC t1 ty1) && (tyC t2 ty2)
-        tyC (Constructor cL t) tt@(TyData dDef) = maybe False ((tyC t) . (typeSubstitution tt 0)) (M.lookup cL dDef)
-        tyC t ty = maybe False (cmpTy [] [] ty) (typeTerm c t)
--- TODO
+  where tyC Unit TyUnit = return ()
+        tyC (Tuple t1 t2) (TyTuple ty1 ty2) = (tyC t1 ty1) <|> (tyC t2 ty2)
+        tyC (Constructor cL t) tt@(TyData dDef) = do tcL <- maybe (throwError "Error no especificado (TODO)") return  (M.lookup cL dDef)
+                                                     tyC t $ typeSubstitution tt 0 tcL
+        tyC t ty = do tt <- typeTerm c t
+                      if tt==ty then return () else throwError "Error no especificado (TODO)"
+
 
 
 
@@ -143,6 +146,7 @@ termSubstitution s = sub
         sub Unit = Unit
         sub (Constructor c t) = Constructor c (sub t)
         sub (App t1 t2) = App (sub t1) (sub t2)
+        sub (Tuple t1 t2) = Tuple (sub t1) (sub t2)
         sub (Destructor d t) = Destructor d (sub t)
 
 findTerm :: NameEnv [Rule] -> Term -> Maybe Term

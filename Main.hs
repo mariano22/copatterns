@@ -17,9 +17,19 @@ module Main where
   import Parse
   import Typing
 
-  e = do textProgram <- readFile "test"
-         defs <- parseIO "test" defs_parse textProgram
-         let Just (tEnv,ast) = typeFold [] [] (fromJust defs)
+  w :: IO ()
+  w = do defs' <- parseIO "asdasd" aux "main main = main main () ()"
+         (putStrLn . show) defs'
+
+  u :: IO ()
+  u = do defs' <- parseIO "asdasd" aux2 "main main main "
+         (putStrLn . show) defs'
+
+  e :: IO ()
+  e = do textProgram <- readFile "test2"
+         defs' <- parseIO "test2" defs_parse textProgram
+         let Just defs = mapM procDef (fromJust defs')
+         let Just (tEnv,ast) = typeFold [] [] defs
          (putStrLn . show) ast
          (putStrLn . show) tEnv
          x (Just ast)
@@ -31,6 +41,7 @@ module Main where
              putStrLn $ "Reglas: " ++ show programRules
              t <- computeAllIO programRules (Var "main")
              (putStrLn . show) t
+             (putStrLn . pretty) t
 
   parseIO :: String -> (String -> ParseResult a) -> String -> IO (Maybe a)
   parseIO f p x = case p x of
@@ -38,9 +49,7 @@ module Main where
                                        return Nothing
                        Ok r      -> return (Just r)
          
-
-
-
+   
 
 
  
