@@ -1,0 +1,4 @@
+B = C
+A = ()
+main : A -> A -> A
+main x y = ()

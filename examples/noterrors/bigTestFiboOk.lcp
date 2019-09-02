@@ -1,0 +1,45 @@
+Nat = Data(X)< Zero () | Succ X >
+NatStream = Record(X){ .head : Nat | .tail : X }
+NatList = Data(X)<  Empty () | Cons (Nat,X) >
+
+suma : Nat -> Nat -> Nat
+suma (Zero ()) y = y
+suma (Succ x) y = suma x (Succ y)
+
+prod : Nat -> Nat -> Nat
+prod (Zero ()) y = Zero ()
+prod (Succ x) y = suma y (prod x y)
+
+zipSum : NatStream -> NatStream -> NatStream
+.head (zipSum a b) = suma (.head a) (.head b)
+.tail (zipSum a b) = zipSum (.tail a) (.tail b)
+
+fib : NatStream
+.head fib = 0
+.head (.tail fib) = 1
+.tail (.tail fib) = zipSum fib (.tail fib)
+
+nfib : Nat -> NatStream
+nfib 0 = fib
+nfib (Succ x) = .tail (nfib x)
+
+fibo : Nat -> Nat
+fibo n = .head (nfib n)
+
+fiboList_ : Nat -> NatList
+fiboList_ 0 = Cons (fibo 0,Empty ())
+fiboList_ (Succ x) = Cons (fibo (Succ x), fiboList_ x)
+
+fiboList :  Nat -> NatList
+fiboList x = reverseList (tail ( fiboList_ x ))
+
+tail : NatList -> NatList
+tail (Empty ()) = (Empty ())
+tail (Cons (x,xs)) = xs
+
+reverseList : NatList -> NatList
+reverseList xs = reverseList_ xs (Empty ())
+
+reverseList_ : NatList -> NatList -> NatList
+reverseList_ (Empty ()) rev = rev
+reverseList_ (Cons (x,xs)) rev = reverseList_ xs (Cons (x,rev))

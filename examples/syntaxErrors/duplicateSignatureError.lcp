@@ -1,0 +1,9 @@
+A = ()
+
+main : A
+main : ()
+main = ()
+main = ()
+
+f : A
+f = ()

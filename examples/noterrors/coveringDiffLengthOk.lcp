@@ -1,0 +1,10 @@
+Nat = Data(X)< Zero () | Succ X >
+NatStream = Record(X){ .head : Nat | .tail : X }
+NatList = Data(X)<  Empty () | Cons (Nat,X) >
+
+id : Nat -> Nat
+id x = x
+
+f : Nat -> Nat
+f 0 = 0
+f = id

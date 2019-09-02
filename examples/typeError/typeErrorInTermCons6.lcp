@@ -1,0 +1,8 @@
+Nat = Data(X)< Zero () | Succ X >
+NatList = Record(X){ .head : Nat | .tail : X }
+
+g : NatList -> Nat
+g x = 0
+
+f : Nat -> Nat
+f x = g (Succ x)

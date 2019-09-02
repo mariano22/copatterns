@@ -1,0 +1,5 @@
+A = ()
+
+main : A -> A
+main x = ()
+main (.head x) = ()

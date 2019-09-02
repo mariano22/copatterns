@@ -1,0 +1,8 @@
+A = ()
+
+myFuncion : A -> A
+myFuncion x = x
+
+main : A -> A
+main x = ()
+main (myFuncion x) = ()

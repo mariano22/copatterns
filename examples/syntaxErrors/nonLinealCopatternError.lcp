@@ -1,0 +1,4 @@
+A = ()
+
+main : A -> A -> A
+main x x = ()
