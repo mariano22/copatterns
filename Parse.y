@@ -1,6 +1,12 @@
 {
-module Parse where
+module Parse
+( parseDefs,     -- Parser for ProgramDefs (load program code from a file).
+  parseEvalExp,  -- Parser for TypedTerm (to be evaluated interactively).
+  parseTerm,     -- Parser for Term (to be type inferred).
+  ParseResult(..)
+) where
 import Common
+import Utils
 import Data.Maybe
 import Data.Char
 import qualified Data.Map as M
@@ -8,108 +14,95 @@ import qualified Data.Map as M
 }
 
 %monad { P } { thenP } { returnP }
-%name parseType Type
-%name parseRule Rule
-%name parseRules Rules
-%name parseDefs Defs
-
-%name aux_ Rule
-%name aux_2 Term
-
+%name parseDefsP Defs
+%name parseEvalExpP EvalExp
+%name parseTermP Term
 %tokentype { Token }
 %lexer {lexer} {TEOF}
 
 %token
-    '='       { TEquals    }
-    ':'       { TColon     }
-    '('       { TParenOpen }
-    ')'       { TParenClose     }
-    '{'       { TBraceOpen }
-    '}'       { TBraceClose     }
-    '>'       { TGreater     }
-    '<'       { TLower     }
-    '|'       { TSeparator     }
-    ','       { TComma     }
-    '->'      { TArrow     }
-    NAT       { TNat $$    }
-    IDENTIFIER       { TIdentifier $$    }
+    '='                       { TEquals    }
+    ':'                       { TColon     }
+    '('                       { TParenOpen }
+    ')'                       { TParenClose     }
+    '{'                       { TBraceOpen }
+    '}'                       { TBraceClose     }
+    '>'                       { TGreater     }
+    '<'                       { TLower     }
+    '|'                       { TVerticalSeparator     }
+    ','                       { TComma     }
+    '->'                      { TArrow     }
+    LOWERCASEIDENTIFIER       { TLowercaseIdentifier $$    }
     UPPERCASEIDENTIFIER       { TUppercaseIdentifier $$    }
-    DESTRUCTORIDENTIFIER       { TDestructor $$    }
-    RECORD     { TRecord     }
-    DATA     { TData     }
-    UNIT { TUnit }
-    ENDLINEBLOCK { TEndlineBlock }
-    ENDLINESIMPLE { TEndlineSimple }
-    '1+' { TPrePlus }
-    '+1' { TPostPlus }
+    DESTRUCTORIDENTIFIER      { TDestructor $$    }
+    RECORD                    { TRecord     }
+    DATA                      { TData     }
+    UNIT                      { TUnit }
+    INT                       { TInt $$}
+    ENDLINE                   { TEndLine }
 
-%nonassoc '='    
-%nonassoc IDENTIFIER
+%nonassoc '='
+%nonassoc LOWERCASEIDENTIFIER UNIT INT '('
 %right '->'
 
 %%
 
-Defs    :: { [Def'] }
-         :  RDef Defs           { $1 : $2 }
-         |  TDef Defs           { $1 : $2 }
-         |  TDef ENDLINESIMPLE Defs           { $1 : $3 }
-         |  ENDLINEBLOCK Defs { $2 }
-         | {[]} 
+Defs    ::                                                            { ProgramDefs }
+        : lineno TypeDef Defs                                         { addTypeDef (Def { getDefLineNo = $1, getDef = $2 }) $3 }
+        | lineno SignatureDef Defs                                    { addSignatureDef (Def { getDefLineNo = $1, getDef = $2 }) $3 }
+        | lineno TermDef Defs                                         { addTermDef (Def { getDefLineNo = $1, getDef = $2 }) $3 }
+        | ENDLINE Defs                                                { $2 }
+        | {- empty -}                                                 { ProgramDefs [] [] [] }
 
+TypeDef     ::                                                        { TypeDef }
+            : UPPERCASEIDENTIFIER '=' Type                            { TypeDef { getTypeVar = $1, getType = $3 } }
 
-RDef     :: { Def' }            
-         :  IDENTIFIER ':' Type Rules { RuleDef $1 $3 $4 }
+SignatureDef ::                                                       { SignatureDef }
+             : LOWERCASEIDENTIFIER ':' Type                           { SignatureDef { getSymbol = $1, getSymbolType = $3 } }
 
-TDef     :: { Def' }            
-         :  UPPERCASEIDENTIFIER '=' Type { TypeDef $1 $3 }
+TermDef     ::                                                        { TermDef }
+            : Term '=' Term                                           { TermDef { lhs = $1, rhs = $3 } }
 
-Type    :: { VType }
-        : UPPERCASEIDENTIFIER { VTyVar $1 }
-        | UNIT                      { VTyUnit }
-        | '(' Type ',' Type ')'                 { VTyTuple $2 $4 }
-        | DATA '(' UPPERCASEIDENTIFIER ')' '<' DataTypeList '>' { VTyData $3 $6 }
-        | Type '->' Type               { VTyFun $1 $3 }
-        | RECORD '(' UPPERCASEIDENTIFIER ')' '{' RecordTypeList '}' { VTyRecord $3 $6 }
-        | '(' Type ')'                 { $2 }
+Term ::                                                               { Term }
+     : AtomicTerm                                                     { $1 }
+     | Term AtomicTerm                                                { App $1 $2 }
+     | UPPERCASEIDENTIFIER AtomicTerm                                 { Constructor $1 $2  }
+     | DESTRUCTORIDENTIFIER AtomicTerm                                { Destructor $1 $2 }
 
-DataTypeList :: { M.Map Label VType }
-             : UPPERCASEIDENTIFIER ':' Type '|' DataTypeList  { M.insert $1 $3 $5 }
-             | UPPERCASEIDENTIFIER ':' Type { M.singleton $1 $3 }
-             | { M.empty }
+AtomicTerm        ::                                                  { Term }
+ 		              : LOWERCASEIDENTIFIER                               { Var $1 }
+ 		              | UNIT                                              { Unit }
+ 		              | '(' Term ',' Term ')'                             { Tuple $2 $4 }
+ 		              | '(' Term ')'                                      { $2 }
+                  | INT                                               { makeIntTerm $1 }
 
-RecordTypeList :: { M.Map Label VType }
-               : DESTRUCTORIDENTIFIER ':' Type '|' RecordTypeList  { M.insert $1 $3 $5 }
-               | DESTRUCTORIDENTIFIER ':' Type { M.singleton $1 $3 }
-               | { M.empty }
+Type    ::                                                            { Type           }
+        : UPPERCASEIDENTIFIER                                         { TyVar $1       }
+        | UNIT                                                        { TyUnit         }
+        | '(' Type ',' Type ')'                                       { TyTuple $2 $4  }
+        | DATA '(' UPPERCASEIDENTIFIER ')' '<' DataTypeList '>'       { TyData $ M.map (ligate $3) $6 }
+        | Type '->' Type                                              { TyFun $1 $3    }
+        | RECORD '(' UPPERCASEIDENTIFIER ')' '{' RecordTypeList '}'   { TyRecord $ M.map (ligate $3) $6 }
+        | '(' Type ')'                                                { $2              }
 
-Rules :: { [(Term,Term)] }
-      : ENDLINESIMPLE Rule Rules { $2 : $3 }
-      | {[]}
+DataTypeList ::                                                       { M.Map Symbol Type }
+             : UPPERCASEIDENTIFIER Type '|' DataTypeList          { M.insert $1 $2 $4 }
+             | UPPERCASEIDENTIFIER Type                           { M.singleton $1 $2 }
 
-Rule  :: { (Term,Term) }
-      : Term '=' Term { ($1,$3) }
+RecordTypeList ::                                                     { M.Map Symbol Type }
+               : DESTRUCTORIDENTIFIER ':' Type '|' RecordTypeList     { M.insert $1 $3 $5 }
+               | DESTRUCTORIDENTIFIER ':' Type                        { M.singleton $1 $3 }
 
+EvalExp ::                                                       { TypedTerm }
+        : Term ':' Type                                          { TypedTerm $1 $3 }
 
-AtomicTerm         :: { Term }
-		   : IDENTIFIER { Var $1 }
-		   | UNIT { Unit }
-		   | '(' Term ',' Term ')' { Tuple $2 $4 }
-		   | '(' Term ')' { $2 }
-           | NAT { natToTerm $1 }
-
-
-Term :: {Term}
-     : AtomicTerm { $1 }
-     | Term AtomicTerm { App $1 $2 }
-     | UPPERCASEIDENTIFIER AtomicTerm { Constructor $1 $2  }
-     | DESTRUCTORIDENTIFIER AtomicTerm { Destructor $1 $2 }
-     | AtomicTerm '+1' { Constructor "Succ" $1 }
-     | '+1' AtomicTerm { Constructor "Succ" $2 }
+lineno ::                                                             { LineNumber }
+        : {- empty -}                                                 {% getLineNo }
 
 {
 
 data ParseResult a = Ok a | Failed String
-                     deriving Show                     
+                     deriving Show
 type LineNumber = Int
 type P a = String -> LineNumber -> ParseResult a
 
@@ -120,12 +113,12 @@ thenP :: P a -> (a -> P b) -> P b
 m `thenP` k = \s l-> case m s l of
                          Ok a     -> k a s l
                          Failed e -> Failed e
-                         
+
 returnP :: a -> P a
 returnP a = \s l-> Ok a
 
 failP :: String -> P a
-failP err = \s l -> Failed err
+failP err = \s l -> Failed $ "Línea " ++ show l ++ ": " ++ err ++ "\n" ++ s
 
 catchP :: P a -> (String -> P a) -> P a
 catchP m k = \s l -> case m s l of
@@ -133,9 +126,9 @@ catchP m k = \s l -> case m s l of
                         Failed e -> k e s l
 
 happyError :: P a
-happyError = \ s i -> Failed $ "Línea "++(show (i::LineNumber))++": Error de parseo\n"++(s)
+happyError = failP "Error de parseo"
 
-data Token =   TEquals 
+data Token =   TEquals
              | TColon
              | TParenOpen
              | TParenClose
@@ -143,43 +136,33 @@ data Token =   TEquals
              | TBraceClose
              | TGreater
              | TLower
-             | TSeparator
+             | TVerticalSeparator
              | TComma
              | TArrow
-             | TNat Int
-             | TIdentifier String
+             | TLowercaseIdentifier String
              | TUppercaseIdentifier String
              | TDestructor String
              | TRecord
              | TData
              | TUnit
+             | TInt Int
+             | TEndLine
              | TEOF
-             | TEndlineBlock
-             | TEndlineSimple
-             | TPostPlus
-             | TPrePlus
              deriving Show
 
-
-----------------------------------
+lexer :: (Token -> P a) -> P a
 lexer cont s = case s of
                     [] -> cont TEOF []
-                    ('\n':cs) ->   dropSpaces 1 cs
-
-                    ('+':('1':cs)) -> cont TPostPlus cs
-                    ('1':('+':cs)) -> cont TPrePlus cs
-
+                    ('\n':cs)  ->  \line -> cont TEndLine cs (line + 1)
+                    ('-':('-':cs)) -> lexer cont $ dropWhile ((/=) '\n') cs
+                    ('{':('-':cs)) -> \line -> lexerComment 0 cont cs line
+                    ('-':('}':cs)) -> failP "Comentario no abierto" s
                     (c:cs)
                           | isSpace c -> lexer cont cs
-                          | isAlpha c -> lexIdentifiers (c:cs)
-                          | isDigit c -> lexNat (c:cs)
-                    ('.':cs) -> let (var,rest) = span isAlpha cs in cont (TDestructor ('.':var)) rest
-
-                    ('-':('-':cs)) -> lexer cont $ dropWhile ((/=) '\n') cs
-                    ('{':('-':cs)) -> consumirBK 0 0 cont cs	
-                    ('-':('}':cs)) -> \ line -> Failed $ "Línea "++(show line)++": Comentario no abierto"
-
-
+                          | isAlpha c -> lexerIdentifiers cont (c:cs)
+                          | isDigit c -> lexerInt cont (c:cs)
+                    ('.':cs) -> let (var, rest) = span (\x-> isAlpha x || x=='_' || isDigit x) cs
+                                in cont (TDestructor ('.':var)) rest
                     ('-':('>':cs)) -> cont TArrow cs
                     ('(':(')':cs)) -> cont TUnit cs
                     ('=':cs) -> cont TEquals cs
@@ -190,34 +173,34 @@ lexer cont s = case s of
                     ('}':cs) -> cont TBraceClose cs
                     ('>':cs) -> cont TGreater cs
                     ('<':cs) -> cont TLower cs
-                    ('|':cs) -> cont TSeparator cs
+                    ('|':cs) -> cont TVerticalSeparator cs
                     (',':cs) -> cont TComma cs
+                    unknown -> failP "Secuencia de caracteres no soportada." s
 
-                    unknown -> \line -> Failed $ "Línea "++(show line)++": No se puede reconocer "++(show $ take 10 unknown)++ "..."
-                    where lexIdentifiers cs = case span (\x-> isAlpha x || x=='_' || isDigit x) cs of
-                                                    ("Data",rest) -> cont TData rest
-                                                    ("Record",rest) -> cont TRecord rest
-                                                    (var,rest)   -> cont ((if isUpper (head cs) then TUppercaseIdentifier else TIdentifier) var) rest
-                          lexNat cs = let (nat,rest) = span isDigit cs in cont (TNat (read nat)) rest
-                          consumirBK anidado cl cont s = case s of
-                                                              ('-':('-':cs)) -> consumirBK anidado cl cont $ dropWhile ((/=) '\n') cs
-		                                              ('{':('-':cs)) -> consumirBK (anidado+1) cl cont cs	
-		                                              ('-':('}':cs)) -> case anidado of
-		                                                                     0 -> \line -> lexer cont cs (line+cl)
-		                                                                     _ -> consumirBK (anidado-1) cl cont cs
-	                                                      ('\n':cs) -> consumirBK anidado (cl+1) cont cs
-	                                                      (_:cs) -> consumirBK anidado cl cont cs
-                          dropSpaces x ('\n':cs) = dropSpaces (x+1) cs
-                          dropSpaces 1 [] = \line -> cont TEndlineBlock [] (line+1)
-                          dropSpaces 1 ds = \line -> cont TEndlineSimple ds (line+1)
-                          dropSpaces x ds = \line -> cont TEndlineBlock ds (line+x)
+lexerComment :: Int -> (Token -> P a) -> P a
+lexerComment deep cont s = case s of
+    ('-':('-':cs)) -> lexerComment deep cont $ dropWhile ((/=) '\n') cs
+    ('{':('-':cs)) -> lexerComment (deep+1) cont cs
+    ('-':('}':cs)) -> if deep==0 then lexer cont cs
+                      else lexerComment (deep-1) cont cs
+    ('\n':cs) -> \line -> lexerComment deep cont cs (line+1)
+    (_:cs) -> lexerComment deep cont cs
 
-    
-type_parse s = parseType s 1
-rule_parse s = parseRule s 1
-rules_parse s = parseRules s 1
-defs_parse s = parseDefs s 1
+lexerInt :: (Token -> P a) -> P a
+lexerInt cont s = let (intString, cs) = span isDigit s
+                      i = read intString :: Int
+                  in cont (TInt i) cs
 
-aux s = aux_ s 1
-aux2 s = aux_2 s 1
+lexerIdentifiers :: (Token -> P a) -> P a
+lexerIdentifiers cont s = case span (\x-> isAlpha x || x=='_' || isDigit x) s of
+    ("Data", cs) -> cont TData cs
+    ("Record", cs) -> cont TRecord cs
+    (var, cs)      -> let t = if isUpper (head var)
+                                  then TUppercaseIdentifier var
+                                  else TLowercaseIdentifier var
+                      in cont t cs
+
+parseDefs s = parseDefsP s 1
+parseEvalExp s = parseEvalExpP s 1
+parseTerm s = parseTermP s 1
 }
