@@ -100,3 +100,30 @@ emptyProgram = (TypeSig M.empty, M.empty)
 {- The type of the context needed to do the type checking: the respective types of
    defined symbols and variables and the type synonym definitions. -}
 type TypeContext = (VarSignature, TypeSignature)
+
+{- Los contextos de evaluación son un subconjunto sintáctico de los términos que
+   son candidatos a matchear con un copatrón (ya que tienen "forma de copatrón").
+   El parámetro x nos permite definir contextos de evaluación con términos
+   como argumentos ó contextos con sólo valores. -}
+data EContext x = EHole Symbol
+                | EApp (EContext x) x
+                | EDestructor Symbol (EContext x)
+                deriving Show
+
+instance Functor EContext where
+  fmap _ (EHole f) =  EHole f
+  fmap f (EApp e x) = EApp (fmap f e) (f x)
+  fmap f (EDestructor d e) =  EDestructor d (fmap f e)
+
+{- Representar un EContext x como [ContextE x] nos da una mirada "desde adentro"
+   de la estructura de los entornos de evaluación.
+   También usamos este constructor de tipos para obtener una representación de
+   Copattern "desde adentro" con ContextE Pattern. -}
+data ContextE x = EEHole Symbol | EEApp x | EEDestructor Symbol deriving Show
+
+-- El tipo de los valores.
+data Value = PVUnit
+           | PVConstructor Symbol Value
+           | PVPair Value Value
+           | NegV (EContext Term)
+           deriving Show

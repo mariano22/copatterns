@@ -148,7 +148,7 @@ checkCoverage p@(_,s) = let qs :: [[Copattern]]
                             qsC = map (\(cs,s) -> (coverage (getSymbolExpandedType p s) cs, s)) qsS
                         in case find (\(c,_) -> not c) qsC of
                           Nothing -> return ()
-                          Just (False, sy) -> throwError ("Not covering at "++sy)
+                          Just (False, sy) -> throwError (coveringError sy)
 
 {- Given type of the defined symbol determines if a provided
    list of Copatterns is a good covering. -}

@@ -34,7 +34,8 @@ interpreter = addUserCommand ":clear" "" "Unload the program." (const . const $ 
               initialState "CP>" (CPState emptyProgram)
 
 -- Our main runs the created interpreter above.
-main = runInterpreter interpreter
+main = do putStrLn "Interprete de lenguaje con copatterns.\nEscriba :help para recibir ayuda."
+          runInterpreter interpreter
 
 -- Auxiliary function to convert ParseResult to Except TError.
 parseWithExcept :: (String -> ParseResult a) -> String -> Except TError a
@@ -60,7 +61,7 @@ interpretFileContent' code (CPState prog) =
   case runExcept (do programDef <- parseWithExcept parseDefs code
                      program <- makeProgram programDef
                      typeProgram program
-                     checkCoverage program -- EXPERIMENAL BORRAR
+                     checkCoverage program
                      return program) of
     Right newprog -> (CPState newprog, "File loaded!")
     Left errMsg   -> (CPState prog, errMsg)

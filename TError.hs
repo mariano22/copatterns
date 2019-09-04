@@ -90,3 +90,6 @@ typeInferredMismatchError :: Type -> Type -> TError
 typeInferredMismatchError tyInferred tyChecked = "The type: \"" ++
   PP.render (printType tyInferred) ++ "\" doesn't match with type: \""
   ++ PP.render (printType tyChecked) ++ "\""
+
+coveringError :: Symbol -> TError
+coveringError sy = "Not covering at definition of \""++sy++"\""
